@@ -62,7 +62,10 @@ if stop and st.session_state.run:
         st.session_state.cap = None
     st.session_state.particles = []
 
-frame_area = st.image([])
+# =====================
+# 表示用ウィジェット
+# =====================
+frame_area = st.empty()
 
 # =====================
 # リボン画像読み込み
@@ -74,20 +77,12 @@ else:
     ribbon_img = cv2.imread(ribbon_path, cv2.IMREAD_UNCHANGED)  # BGRA
 
 def overlay_ribbon(frame, cx, cy, face_w, face_h, scale=1.0):
-    """
-    frame: OpenCV画像 (BGR)
-    cx, cy: リボン中心位置
-    face_w, face_h: 顔矩形の幅・高さ
-    scale: 顔に対するリボン倍率（1.0 = 顔幅の25%くらい）
-    """
     h, w = ribbon_img.shape[:2]
-
-    # 顔サイズに合わせて縮小
-    target_w = int(face_w * 0.2 * scale)   # 顔幅の20%を基準
-    target_h = int(h * target_w / w)       # アスペクト比維持
+    # 顔幅の20%を基準にリサイズ
+    target_w = int(face_w * 0.2 * scale)
+    target_h = int(h * target_w / w)
     resized = cv2.resize(ribbon_img, (target_w, target_h))
 
-    # 位置をフレーム内に収める
     x1 = max(int(cx - target_w // 2), 0)
     y1 = max(int(cy - target_h // 2), 0)
     x2 = min(x1 + target_w, frame.shape[1])
@@ -99,6 +94,7 @@ def overlay_ribbon(frame, cx, cy, face_w, face_h, scale=1.0):
 
     frame[y1:y2, x1:x2] = (alpha * overlay[:, :, :3] +
                             (1 - alpha) * frame[y1:y2, x1:x2])
+
 # =====================
 # 粒子モデル
 # =====================
@@ -146,7 +142,6 @@ if st.session_state.run and st.session_state.cap and os.path.exists(ribbon_path)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.3, 5)
 
-        # 粒子生成とリボン描画
         for (x,y,w,h) in faces:
             roi_gray = gray[y:y+h, x:x+w]
             eyes = eye_cascade.detectMultiScale(roi_gray, 1.2, 8)
@@ -155,17 +150,19 @@ if st.session_state.run and st.session_state.cap and os.path.exists(ribbon_path)
                 cy = y+ey+eh//2
                 for _ in range(spawn_n):
                     st.session_state.particles.append(create_particle(cx, cy))
-                # 顔矩形に対して目の下あたりに調整
-                left_cheek = (x + int(w*0.25), y + int(h*0.55))
-                right_cheek = (x + int(w*0.75), y + int(h*0.55))
 
-                overlay_ribbon(frame, *left_cheek, face_w=w, face_h=h, scale=ribbon_scale)
-                overlay_ribbon(frame, *right_cheek, face_w=w, face_h=h, scale=ribbon_scale)
+            # 両頬リボン（目下あたり）
+            left_cheek = (x + int(w*0.25), y + int(h*0.55))
+            right_cheek = (x + int(w*0.75), y + int(h*0.55))
+            overlay_ribbon(frame, *left_cheek, face_w=w, face_h=h, scale=ribbon_scale)
+            overlay_ribbon(frame, *right_cheek, face_w=w, face_h=h, scale=ribbon_scale)
 
         # 粒子描画
         for p in st.session_state.particles:
             update_particle(p)
             cv2.circle(frame, (int(p["x"]), int(p["y"])), particle_size, p["color"], -1)
 
-        frame_area.image(frame, channels="BGR")
+        # BGR→RGB変換（必要に応じて）
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_area.image(frame_rgb)
         time.sleep(0.03)
